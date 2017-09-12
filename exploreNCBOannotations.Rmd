@@ -1,0 +1,63 @@
+
+### Analysis of Youtube transcripts using Biomedical Ontologies
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tm)
+library(stringr)
+
+df <- read.csv("annotationsDF.csv", as.is=T) %>%
+  mutate(prefLabel = gsub(", nos", "",
+                      gsub(" \\(excluding n02 n89 r09\\)", "",
+                      gsub(" \\[disease/finding\\]", "", 
+                      tolower(prefLabel)))),
+        ontology = str_extract(ontology, "[A-Z0-9]+"),
+         cui = str_extract(cui, "[A-Z0-9]+")) %>%
+  subset(cui != lag(cui))
+
+write.csv(df, "annotations.csv")
+```
+
+129 videos contained terms that were successfully mapped to biomedical concepts within the 'Signs and Symptoms' semantic type of the UMLS using an established ontology like SNOMED-CT, ICD-10, or the Consumer Health Vocabulary. These disparate ontologies are brought together by the Unified Medical Language System (UMLS), a compendium of many controlled vocabularies in the biomedical sciences created in 1986).The UMLS provides a mapping structure among these vocabularies and thus allows one to translate among the various terminology systems; it may also be viewed as a comprehensive thesaurus and ontology of biomedical concepts.
+
+Approximately 100 transcripts obtained from Youtube could not be mapped to the UMLS. Possible reasons for inability to map includes use of obscure/unrecognizable language to describe their experiences or simply a lack of signs and symptoms. 
+
+```{r}
+
+sumDF <- uniqueDF %>%
+  group_by(prefLabel) %>%
+  summarise(sum = length(prefLabel)) %>%
+  arrange(desc(sum)) %>%
+  subset(prefLabel != "contusion - lesion" & prefLabel != "incised wound - morphology")
+
+ggplot(sumDF[sumDF$sum > 5,], aes(x=reorder(prefLabel, sum), y=sum))+
+  geom_bar(stat='identity')+
+  theme(axis.text.x=element_text(angle=65, hjust=1))+
+  ggtitle("Distribution of Annotations")
+```
+
+## Find Coocurrence
+```{r}
+distDF <- df %>%
+  group_by(videoID) %>%
+  mutate(together = 
+           (lag(start) - start) > -500)
+
+distDF$together <- ifelse(is.na(distDF$together), FALSE, distDF$together)
+distDF$together <- ifelse(lead(distDF$together) == TRUE, 
+                          TRUE, distDF$together)
+together <- distDF %>% subset(together == TRUE)
+write.csv(together %>% select(videoID, pair), "concept_pairs.csv")
+together$pair <-  ifelse(lag(together$videoID) == together$videoID, 
+       paste(lag(together$prefLabel), together$prefLabel, sep = "/"),
+       'error')
+write.csv(together %>% subset(pair != 'error') %>%
+  group_by(pair) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n)), "concept_pair_statistics.csv")
+
+
+```
+
+
